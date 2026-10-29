@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DigestRow, ReadNight, RunStatus } from './types.js';
 
-type RunLine = {
+export type RunLine = {
   at: string;
   // Parsed `at`, for ordering lines written with different offsets.
   time: number;
@@ -56,19 +56,27 @@ const toRow = (job: string, lines: RunLine[]): DigestRow => {
   };
 };
 
-export const readNight: ReadNight = (runsDir, night) => {
+// Every parsed line of a night in file order, plus the count of lines that didn't parse.
+export const readRunLines = (runsDir: string, night: string): { lines: RunLine[]; badLines: number } | null => {
   const file = join(runsDir, `${night}.jsonl`);
   if (!existsSync(file)) return null;
-
-  const byJob = new Map<string, RunLine[]>();
+  const lines: RunLine[] = [];
   let badLines = 0;
   for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
     if (raw.trim() === '') continue;
     const line = parseLine(raw);
-    if (line === null) {
-      badLines++;
-      continue;
-    }
+    if (line === null) badLines++;
+    else lines.push(line);
+  }
+  return { lines, badLines };
+};
+
+export const readNight: ReadNight = (runsDir, night) => {
+  const read = readRunLines(runsDir, night);
+  if (read === null) return null;
+  const { badLines } = read;
+  const byJob = new Map<string, RunLine[]>();
+  for (const line of read.lines) {
     const lines = byJob.get(line.job);
     if (lines) lines.push(line);
     else byJob.set(line.job, [line]);
